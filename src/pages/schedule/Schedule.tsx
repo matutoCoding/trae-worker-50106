@@ -171,19 +171,26 @@ export default function Schedule() {
       return;
     }
 
-    const scheduleData = {
+    const baseData = {
       deceasedName: formData.deceasedName.trim(),
       scheduledTime: scheduleDateTime.toISOString(),
       furnaceId: formData.furnaceId,
       operatorId: formData.operatorId,
-      status: 'pending' as ScheduleStatus,
       estimatedDuration: formData.estimatedDuration,
       remarks: formData.remarks.trim() || undefined,
     };
 
     if (editingSchedule) {
-      updateSchedule(editingSchedule.id, scheduleData);
+      const updateData = {
+        ...baseData,
+        status: editingSchedule.status,
+      };
+      updateSchedule(editingSchedule.id, updateData);
     } else {
+      const scheduleData = {
+        ...baseData,
+        status: 'pending' as ScheduleStatus,
+      };
       addSchedule(scheduleData);
     }
 

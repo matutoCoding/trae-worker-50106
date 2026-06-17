@@ -116,7 +116,7 @@ export default function Monitor() {
           const furnaceMonitorData = getMonitorDataByFurnaceAndRange(furnace.id, rangeHours);
           const furnaceHasData = furnaceMonitorData.length > 0;
           const furnaceLatest = furnaceHasData ? furnaceMonitorData[furnaceMonitorData.length - 1] : null;
-          const displayTemp = furnaceLatest?.temperature ?? furnace.currentTemperature ?? 0;
+          const displayTemp = furnaceLatest?.temperature;
 
           return (
             <button
@@ -134,30 +134,46 @@ export default function Monitor() {
                   {statusLabels[furnace.status].label}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <Thermometer
-                  className={`w-5 h-5 ${
-                    furnace.status === 'running' ? 'text-red-500 animate-temp-pulse' : 'text-industrial-400'
-                  }`}
-                />
-                <span
-                  className={`text-2xl font-bold ${getTemperatureColor(displayTemp)}`}
-                >
-                  {displayTemp ? `${Math.round(displayTemp)}°C` : '--'}
-                </span>
-              </div>
-              <div className="mt-2 h-1.5 bg-industrial-200 rounded-full overflow-hidden">
-                <div
-                  className={`h-full bg-gradient-to-r ${getTemperatureBg(displayTemp)} transition-all duration-500`}
-                  style={{ width: `${Math.min(100, (displayTemp / furnace.maxTemperature) * 100)}%` }}
-                ></div>
-              </div>
-              <div className="text-xs text-industrial-500 mt-1 flex items-center justify-between">
-                <span>最高 {furnace.maxTemperature}°C</span>
-                {furnaceLatest && (
-                  <span className="text-industrial-400">{formatTime(furnaceLatest.timestamp)}</span>
-                )}
-              </div>
+              {furnaceHasData ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Thermometer
+                      className={`w-5 h-5 ${
+                        furnace.status === 'running' ? 'text-red-500 animate-temp-pulse' : 'text-industrial-400'
+                      }`}
+                    />
+                    <span
+                      className={`text-2xl font-bold ${getTemperatureColor(displayTemp || 0)}`}
+                    >
+                      {displayTemp ? `${Math.round(displayTemp)}°C` : '--'}
+                    </span>
+                  </div>
+                  <div className="mt-2 h-1.5 bg-industrial-200 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full bg-gradient-to-r ${getTemperatureBg(displayTemp || 0)} transition-all duration-500`}
+                      style={{ width: `${Math.min(100, ((displayTemp || 0) / furnace.maxTemperature) * 100)}%` }}
+                    ></div>
+                  </div>
+                  <div className="text-xs text-industrial-500 mt-1 flex items-center justify-between">
+                    <span>最高 {furnace.maxTemperature}°C</span>
+                    {furnaceLatest && (
+                      <span className="text-industrial-400">{formatTime(furnaceLatest.timestamp)}</span>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Thermometer className="w-5 h-5 text-industrial-300" />
+                    <span className="text-2xl font-bold text-industrial-300">--</span>
+                  </div>
+                  <div className="mt-2 h-1.5 bg-industrial-100 rounded-full overflow-hidden"></div>
+                  <div className="text-xs text-industrial-400 mt-1 flex items-center justify-between">
+                    <span>最高 {furnace.maxTemperature}°C</span>
+                    <span className="text-industrial-300">暂无数据</span>
+                  </div>
+                </>
+              )}
             </button>
           );
         })}

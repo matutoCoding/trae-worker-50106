@@ -156,24 +156,30 @@ const generateMonitorData = (): FurnaceMonitor[] => {
   const now = new Date();
   
   furnaces.filter(f => f.status === 'running').forEach(furnace => {
-    for (let i = 0; i < 60; i++) {
-      const timestamp = addMinutes(now, -i);
+    const totalMinutes = 24 * 60;
+    const intervalMinutes = 5;
+    const count = Math.floor(totalMinutes / intervalMinutes);
+    
+    for (let i = 0; i < count; i++) {
+      const timestamp = addMinutes(now, -i * intervalMinutes);
       const baseTemp = furnace.id === 'f1' ? 850 : 920;
-      const tempVariation = Math.sin(i / 5) * 30 + (Math.random() - 0.5) * 20;
+      const tempVariation = Math.sin(i / 12) * 40 + (Math.random() - 0.5) * 25;
       
       data.push({
         id: generateId(),
         furnaceId: furnace.id,
         timestamp: timestamp.toISOString(),
         temperature: Math.max(200, Math.min(1200, baseTemp + tempVariation)),
-        pressure: 101.3 + Math.sin(i / 8) * 2 + (Math.random() - 0.5),
-        oxygenLevel: 8 + Math.sin(i / 10) * 1.5 + (Math.random() - 0.5) * 0.5,
+        pressure: 101.3 + Math.sin(i / 20) * 2 + (Math.random() - 0.5),
+        oxygenLevel: 8 + Math.sin(i / 25) * 1.5 + (Math.random() - 0.5) * 0.5,
         status: 'running',
       });
     }
   });
   
-  return data;
+  return data.sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  );
 };
 
 export const monitorData: FurnaceMonitor[] = generateMonitorData();
