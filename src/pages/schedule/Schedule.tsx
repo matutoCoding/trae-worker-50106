@@ -23,7 +23,6 @@ import {
   formatDateTime,
   formatDuration,
   employees,
-  furnaces,
   employeeRoleLabels,
 } from '@/data/mockData';
 import { format, addDays, startOfWeek, isToday, isSameDay, parseISO } from 'date-fns';
@@ -50,6 +49,7 @@ export default function Schedule() {
     updateSchedule,
     deleteSchedule,
     checkScheduleConflict,
+    furnaces,
   } = useAppStore();
 
   const [viewMode, setViewMode] = useState<'day' | 'week'>('day');

@@ -525,24 +525,32 @@ export const useAppStore = create<AppState>()(
         const targetStart = addMinutes(now, -hours * 60);
 
         const existing = state.monitorData.filter(m => m.furnaceId === furnaceId);
-        const existingStart = existing.length > 0
-          ? new Date(Math.min(...existing.map(m => new Date(m.timestamp).getTime())))
-          : now;
+        const existingSorted = existing.sort(
+          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+        const existingStart = existingSorted.length > 0
+          ? new Date(existingSorted[0].timestamp)
+          : null;
+        const existingEnd = existingSorted.length > 0
+          ? new Date(existingSorted[existingSorted.length - 1].timestamp)
+          : null;
 
         const furnace = state.furnaces.find(f => f.id === furnaceId);
         if (!furnace || furnace.status !== 'running') return;
 
         const baseTemp = furnaceId === 'f1' ? 850 : furnaceId === 'f2' ? 920 : 880;
 
-        if (existingStart > targetStart) {
-          const gapMs = existingStart.getTime() - targetStart.getTime();
+        const newPoints: FurnaceMonitor[] = [];
+
+        if (!existingStart || existingStart > targetStart) {
+          const gapStart = existingStart || targetStart;
+          const gapMs = gapStart.getTime() - targetStart.getTime();
           const gapMinutes = Math.floor(gapMs / 60000);
           const count = Math.floor(gapMinutes / 5);
 
-          const newPoints: FurnaceMonitor[] = [];
           for (let i = 0; i < count; i++) {
             const timestamp = addMinutes(targetStart, i * 5);
-            if (timestamp >= existingStart) break;
+            if (existingStart && timestamp >= existingStart) break;
             const tempVariation = Math.sin(i / 12) * 40 + (Math.random() - 0.5) * 25;
             newPoints.push({
               id: generateId(),
@@ -554,12 +562,35 @@ export const useAppStore = create<AppState>()(
               status: 'running',
             });
           }
+        }
 
-          if (newPoints.length > 0) {
-            set((s) => ({
-              monitorData: [...s.monitorData, ...newPoints].slice(-5000),
-            }));
+        if (!existingEnd || existingEnd < now) {
+          const gapEnd = existingEnd || targetStart;
+          const gapMs = now.getTime() - gapEnd.getTime();
+          const gapMinutes = Math.floor(gapMs / 60000);
+          const count = Math.floor(gapMinutes / 5);
+
+          const startIdx = existingSorted.length;
+          for (let i = 0; i < count; i++) {
+            const timestamp = addMinutes(gapEnd, (i + 1) * 5);
+            if (timestamp > now) break;
+            const tempVariation = Math.sin((startIdx + i) / 12) * 40 + (Math.random() - 0.5) * 25;
+            newPoints.push({
+              id: generateId(),
+              furnaceId,
+              timestamp: timestamp.toISOString(),
+              temperature: Math.max(200, Math.min(1200, baseTemp + tempVariation)),
+              pressure: 101.3 + Math.sin((startIdx + i) / 20) * 2 + (Math.random() - 0.5),
+              oxygenLevel: 8 + Math.sin((startIdx + i) / 25) * 1.5 + (Math.random() - 0.5) * 0.5,
+              status: 'running',
+            });
           }
+        }
+
+        if (newPoints.length > 0) {
+          set((s) => ({
+            monitorData: [...s.monitorData, ...newPoints].slice(-5000),
+          }));
         }
       },
 

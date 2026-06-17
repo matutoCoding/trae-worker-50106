@@ -28,17 +28,49 @@ import { useAppStore } from '@/store';
 import { statusLabels, formatTime, furnaces, formatDateTime } from '@/data/mockData';
 
 export default function Monitor() {
-  const { monitorData, getMonitorDataByFurnaceAndRange, replenishMonitorData, resetMonitorData } = useAppStore();
+  const { monitorData, getMonitorDataByFurnaceAndRange, replenishMonitorData, resetMonitorData, getFurnaceById } = useAppStore();
   const [selectedFurnace, setSelectedFurnace] = useState<string>('f1');
   const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h'>('1h');
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   const rangeHours = timeRange === '1h' ? 1 : timeRange === '6h' ? 6 : 24;
 
   useEffect(() => {
     replenishMonitorData(selectedFurnace, rangeHours);
   }, [selectedFurnace, timeRange]);
+
   const furnaceData = getMonitorDataByFurnaceAndRange(selectedFurnace, rangeHours);
   const hasData = furnaceData.length > 0;
+  const selectedFurnaceInfo = getFurnaceById(selectedFurnace);
+
+  const latestData = hasData ? furnaceData[furnaceData.length - 1] : null;
+  const earliestData = hasData ? furnaceData[0] : null;
+
+  const now = new Date();
+  const dataAgeMinutes = latestData
+    ? Math.floor((now.getTime() - new Date(latestData.timestamp).getTime()) / 60000)
+    : null;
+  const isDataStale = dataAgeMinutes !== null && dataAgeMinutes > 10;
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    replenishMonitorData(selectedFurnace, rangeHours);
+    setTimeout(() => setIsRefreshing(false), 800);
+  };
+
+  const getEmptyStateDescription = () => {
+    if (!selectedFurnaceInfo) return '暂无监控数据';
+    switch (selectedFurnaceInfo.status) {
+      case 'fault':
+        return '设备故障停机，暂无监控数据';
+      case 'maintenance':
+        return '设备维护中，暂无监控数据';
+      case 'idle':
+        return '设备待机中，暂无监控数据';
+      default:
+        return `${selectedFurnaceInfo.name} 暂无监控数据`;
+    }
+  };
 
   const dataPoints = timeRange === '1h' ? 30 : timeRange === '6h' ? 36 : 48;
   const step = Math.max(1, Math.floor(furnaceData.length / dataPoints));
@@ -50,9 +82,6 @@ export default function Monitor() {
     压力: Math.round(m.pressure * 10) / 10,
     含氧量: Math.round(m.oxygenLevel * 10) / 10,
   }));
-
-  const latestData = hasData ? furnaceData[furnaceData.length - 1] : null;
-  const earliestData = hasData ? furnaceData[0] : null;
 
   const getTemperatureColor = (temp: number) => {
     if (temp >= 900) return 'text-red-600';
@@ -104,8 +133,8 @@ export default function Monitor() {
               </button>
             ))}
           </div>
-          <button className="btn-secondary flex items-center gap-2" onClick={() => replenishMonitorData(selectedFurnace, rangeHours)}>
-            <RefreshCw className="w-4 h-4" />
+          <button className="btn-secondary flex items-center gap-2" onClick={handleRefresh} disabled={isRefreshing}>
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             刷新
           </button>
           <button className="btn-secondary flex items-center gap-2" onClick={() => replenishMonitorData(selectedFurnace, rangeHours)}>
@@ -201,7 +230,7 @@ export default function Monitor() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-lg font-semibold text-industrial-900">
-                  {furnaces.find((f) => f.id === selectedFurnace)?.name} - 温度曲线
+                  {selectedFurnaceInfo?.name} - 温度曲线
                 </h2>
                 <p className="text-sm text-industrial-500 mt-0.5">
                   {timeRange === '1h' ? '最近1小时' : timeRange === '6h' ? '最近6小时' : '最近24小时'}
@@ -210,6 +239,15 @@ export default function Monitor() {
                   )}
                   {hasData && <span className="ml-2 text-industrial-400">({furnaceData.length}个数据点)</span>}
                 </p>
+                {hasData && latestData && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <Activity className={`w-3.5 h-3.5 ${isDataStale ? 'text-yellow-500' : 'text-green-500'}`} />
+                    <span className={`text-xs ${isDataStale ? 'text-yellow-600' : 'text-green-600'}`}>
+                      最新数据：{formatDateTime(latestData.timestamp)}
+                      {isDataStale && ` · 数据已陈旧 ${dataAgeMinutes} 分钟`}
+                    </span>
+                  </div>
+                )}
               </div>
               {hasData && latestData && (
                 <div className="flex items-center gap-4">
@@ -255,7 +293,7 @@ export default function Monitor() {
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
-                <EmptyState description={`${furnaces.find(f => f.id === selectedFurnace)?.name} 暂无监控数据`} />
+                <EmptyState description={getEmptyStateDescription()} />
               )}
             </div>
           </div>
@@ -413,7 +451,7 @@ export default function Monitor() {
             ) : (
               <div className="text-center py-8 text-industrial-400">
                 <AlertCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">暂无运行参数</p>
+                <p className="text-sm">{getEmptyStateDescription()}</p>
               </div>
             )}
           </div>

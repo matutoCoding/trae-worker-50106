@@ -9,6 +9,9 @@ import {
   Download,
   Clock,
   Flame,
+  X,
+  Eye,
+  User,
 } from 'lucide-react';
 import {
   BarChart,
@@ -28,13 +31,14 @@ import {
   Area,
 } from 'recharts';
 import { useAppStore } from '@/store';
-import { formatDate, formatDuration, furnaces, statusLabels } from '@/data/mockData';
+import { formatDate, formatDuration, formatDateTime, employees, statusLabels } from '@/data/mockData';
 import { format, subDays, subMonths } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 
 export default function Energy() {
-  const { energyRecords, schedules } = useAppStore();
+  const { energyRecords, schedules, furnaces } = useAppStore();
   const [period, setPeriod] = useState<'7d' | '30d' | '90d'>('30d');
+  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
 
   const days = period === '7d' ? 7 : period === '30d' ? 30 : 90;
 
@@ -348,14 +352,26 @@ export default function Energy() {
                 return (
                   <div
                     key={record.id}
-                    className="p-3 rounded-lg border border-industrial-200 hover:bg-industrial-50 transition-colors"
+                    className="p-3 rounded-lg border border-industrial-200 hover:bg-industrial-50 transition-colors cursor-pointer"
+                    onClick={() => setSelectedRecordId(record.id)}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <Flame className="w-4 h-4 text-orange-500" />
                         <span className="font-medium text-industrial-800 text-sm">{furnace?.name}</span>
                       </div>
-                      <span className="text-xs text-industrial-500">{record.recordDate}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-industrial-500">{record.recordDate}</span>
+                        <button
+                          className="p-1 hover:bg-industrial-200 rounded transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedRecordId(record.id);
+                          }}
+                        >
+                          <Eye className="w-4 h-4 text-industrial-400" />
+                        </button>
+                      </div>
                     </div>
                     <div className="grid grid-cols-4 gap-2 text-xs">
                       <div>
@@ -382,6 +398,117 @@ export default function Energy() {
           </div>
         </div>
       </div>
+      {selectedRecordId && (() => {
+        const record = energyRecords.find((r) => r.id === selectedRecordId);
+        if (!record) return null;
+
+        const furnace = furnaces.find((f) => f.id === record.furnaceId);
+        const schedule = record.scheduleId ? schedules.find((s) => s.id === record.scheduleId) : null;
+        const operator = schedule ? employees.find((e) => e.id === schedule.operatorId) : null;
+
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md animate-slide-in">
+              <div className="flex items-center justify-between p-5 border-b border-industrial-100">
+                <h3 className="text-lg font-semibold text-industrial-900">能耗记录详情</h3>
+                <button
+                  onClick={() => setSelectedRecordId(null)}
+                  className="p-1 hover:bg-industrial-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-industrial-400" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                {schedule ? (
+                  <>
+                    <div className="flex items-center gap-3 p-3 bg-industrial-50 rounded-lg">
+                      <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
+                        <User className="w-5 h-5 text-primary-600" />
+                      </div>
+                      <div>
+                        <div className="text-xs text-industrial-500">逝者姓名</div>
+                        <div className="font-semibold text-industrial-900">{schedule.deceasedName}</div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <Calendar className="w-4 h-4 text-industrial-400" />
+                        <div className="flex-1">
+                          <div className="text-xs text-industrial-500">排程时间</div>
+                          <div className="text-sm font-medium text-industrial-800">
+                            {formatDateTime(schedule.scheduledTime)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <Flame className="w-4 h-4 text-orange-500" />
+                        <div className="flex-1">
+                          <div className="text-xs text-industrial-500">火化炉</div>
+                          <div className="text-sm font-medium text-industrial-800">{furnace?.name}</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <User className="w-4 h-4 text-industrial-400" />
+                        <div className="flex-1">
+                          <div className="text-xs text-industrial-500">操作工</div>
+                          <div className="text-sm font-medium text-industrial-800">{operator?.name}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="p-3 bg-industrial-50 rounded-lg text-center">
+                    <div className="text-sm text-industrial-500">关联排程：无</div>
+                  </div>
+                )}
+
+                <div className="border-t border-industrial-100 pt-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-industrial-400" />
+                      <span className="text-sm text-industrial-600">实际运行时长</span>
+                    </div>
+                    <span className="font-semibold text-industrial-800">
+                      {formatDuration(record.durationMinutes)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Fuel className="w-4 h-4 text-amber-500" />
+                      <span className="text-sm text-industrial-600">燃料消耗</span>
+                    </div>
+                    <span className="font-semibold text-amber-600">
+                      {record.fuelConsumption} kg
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-blue-500" />
+                      <span className="text-sm text-industrial-600">电力消耗</span>
+                    </div>
+                    <span className="font-semibold text-blue-600">
+                      {record.electricityConsumption} kWh
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-3 border-t border-industrial-100">
+                    <span className="text-sm font-medium text-industrial-700">总费用</span>
+                    <span className="text-xl font-bold text-red-600">
+                      {Math.round(record.cost)} 元
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
