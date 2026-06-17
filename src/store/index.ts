@@ -76,6 +76,36 @@ const calculateDashboardStats = (
   };
 };
 
+const generateMonitorDataForFurnace = (
+  furnaceId: string,
+  baseTemp: number,
+  hours: number,
+  intervalMinutes: number = 5
+): FurnaceMonitor[] => {
+  const data: FurnaceMonitor[] = [];
+  const now = new Date();
+  const count = Math.floor((hours * 60) / intervalMinutes);
+
+  for (let i = 0; i < count; i++) {
+    const timestamp = addMinutes(now, -i * intervalMinutes);
+    const tempVariation = Math.sin(i / 12) * 40 + (Math.random() - 0.5) * 25;
+
+    data.push({
+      id: generateId(),
+      furnaceId,
+      timestamp: timestamp.toISOString(),
+      temperature: Math.max(200, Math.min(1200, baseTemp + tempVariation)),
+      pressure: 101.3 + Math.sin(i / 20) * 2 + (Math.random() - 0.5),
+      oxygenLevel: 8 + Math.sin(i / 25) * 1.5 + (Math.random() - 0.5) * 0.5,
+      status: 'running',
+    });
+  }
+
+  return data.sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  );
+};
+
 interface AppState {
   furnaces: Furnace[];
   employees: Employee[];
@@ -112,6 +142,24 @@ interface AppState {
   addMonitorData: (data: FurnaceMonitor) => void;
   getMonitorDataByFurnace: (furnaceId: string) => FurnaceMonitor[];
   getMonitorDataByFurnaceAndRange: (furnaceId: string, hours: number) => FurnaceMonitor[];
+  replenishMonitorData: (furnaceId: string, hours: number) => void;
+  resetMonitorData: () => void;
+  getMonitorDataByTimeRange: (furnaceId: string, startTime: string, endTime: string) => FurnaceMonitor[];
+
+  updateFurnaceStatus: (furnaceId: string, status: Furnace['status']) => void;
+
+  addEnergyRecord: (record: Omit<EnergyRecord, 'id'>) => void;
+  updateEnergyRecord: (id: string, updates: Partial<EnergyRecord>) => void;
+  getEnergyBySchedule: (scheduleId: string) => EnergyRecord[];
+  getEnergyByFurnaceAndDate: (furnaceId: string, date: string) => EnergyRecord[];
+
+  getFullTraceBySchedule: (scheduleId: string) => {
+    schedule: CremationSchedule | undefined;
+    monitorData: FurnaceMonitor[];
+    energyRecords: EnergyRecord[];
+    ashHandover: AshHandover | undefined;
+    environmentData: EnvironmentMonitor[];
+  };
 
   getFurnaceById: (id: string) => Furnace | undefined;
   getEmployeeById: (id: string) => Employee | undefined;
@@ -181,14 +229,38 @@ export const useAppStore = create<AppState>()(
 
       updateSchedule: (id, updates) => {
         set((state) => {
+          const oldSchedule = state.schedules.find(s => s.id === id);
           const newSchedules = state.schedules.map((s) =>
             s.id === id ? { ...s, ...updates } : s
           );
+
+          let newEnergyRecords = state.energyRecords;
+          if (oldSchedule && (updates.furnaceId || updates.actualDuration || updates.estimatedDuration)) {
+            const updatedSchedule = { ...oldSchedule, ...updates };
+            newEnergyRecords = state.energyRecords.map(e => {
+              if (e.scheduleId !== id) return e;
+              const duration = updatedSchedule.actualDuration || updatedSchedule.estimatedDuration;
+              return {
+                ...e,
+                furnaceId: updatedSchedule.furnaceId,
+                durationMinutes: duration,
+                fuelConsumption: Math.max(0, duration * 0.08 + (Math.random() - 0.3) * 5),
+                electricityConsumption: Math.max(0, duration * 0.15 + (Math.random() - 0.3) * 3),
+                cost: 0,
+              };
+            });
+            newEnergyRecords = newEnergyRecords.map(e => {
+              if (e.scheduleId !== id) return e;
+              return { ...e, cost: e.fuelConsumption * 8 + e.electricityConsumption * 1.2 };
+            });
+          }
+
           return {
             schedules: newSchedules,
+            energyRecords: newEnergyRecords,
             dashboardStats: calculateDashboardStats(
               newSchedules,
-              state.energyRecords,
+              newEnergyRecords,
               state.furnaces,
               state.environmentData,
               state.maintenanceOrders,
@@ -201,11 +273,13 @@ export const useAppStore = create<AppState>()(
       deleteSchedule: (id) => {
         set((state) => {
           const newSchedules = state.schedules.filter((s) => s.id !== id);
+          const newEnergyRecords = state.energyRecords.filter(e => e.scheduleId !== id);
           return {
             schedules: newSchedules,
+            energyRecords: newEnergyRecords,
             dashboardStats: calculateDashboardStats(
               newSchedules,
-              state.energyRecords,
+              newEnergyRecords,
               state.furnaces,
               state.environmentData,
               state.maintenanceOrders,
@@ -254,12 +328,36 @@ export const useAppStore = create<AppState>()(
             }
           }
 
+          let newEnergyRecords = state.energyRecords;
+          if (status === 'completed' && updates.actualDuration) {
+            const existingEnergy = state.energyRecords.find(e => e.scheduleId === id);
+            if (!existingEnergy) {
+              const duration = updates.actualDuration;
+              const fuelConsumption = Math.max(0, duration * 0.08 + (Math.random() - 0.3) * 5);
+              const electricityConsumption = Math.max(0, duration * 0.15 + (Math.random() - 0.3) * 3);
+              newEnergyRecords = [
+                ...state.energyRecords,
+                {
+                  id: generateId(),
+                  scheduleId: id,
+                  furnaceId: schedule.furnaceId,
+                  recordDate: format(new Date(schedule.scheduledTime), 'yyyy-MM-dd'),
+                  fuelConsumption,
+                  electricityConsumption,
+                  durationMinutes: duration,
+                  cost: fuelConsumption * 8 + electricityConsumption * 1.2,
+                },
+              ];
+            }
+          }
+
           return {
             schedules: newSchedules,
             ashHandovers: newAshHandovers,
+            energyRecords: newEnergyRecords,
             dashboardStats: calculateDashboardStats(
               newSchedules,
-              state.energyRecords,
+              newEnergyRecords,
               state.furnaces,
               state.environmentData,
               state.maintenanceOrders,
@@ -289,12 +387,19 @@ export const useAppStore = create<AppState>()(
         const newOrder = { ...order, id: generateId() };
         set((state) => {
           const newOrders = [...state.maintenanceOrders, newOrder];
+          let newFurnaces = state.furnaces;
+          if (order.type === 'repair') {
+            newFurnaces = state.furnaces.map(f =>
+              f.id === order.furnaceId ? { ...f, status: 'fault' as const } : f
+            );
+          }
           return {
             maintenanceOrders: newOrders,
+            furnaces: newFurnaces,
             dashboardStats: calculateDashboardStats(
               state.schedules,
               state.energyRecords,
-              state.furnaces,
+              newFurnaces,
               state.environmentData,
               newOrders,
               state.ashHandovers
@@ -334,6 +439,30 @@ export const useAppStore = create<AppState>()(
           fullUpdates.handleTime = new Date().toISOString();
         }
 
+        if (status === 'completed') {
+          const newFurnaces = state.furnaces.map(f => {
+            if (f.id === order.furnaceId && (f.status === 'fault' || f.status === 'maintenance')) {
+              return { ...f, status: 'idle' as const, lastMaintenanceDate: format(new Date(), 'yyyy-MM-dd') };
+            }
+            return f;
+          });
+
+          set((s) => ({
+            furnaces: newFurnaces,
+            dashboardStats: calculateDashboardStats(
+              s.schedules,
+              s.energyRecords,
+              newFurnaces,
+              s.environmentData,
+              s.maintenanceOrders.map(m => m.id === id ? { ...m, ...fullUpdates } : m),
+              s.ashHandovers
+            ),
+          }));
+
+          get().updateMaintenanceOrder(id, fullUpdates);
+          return;
+        }
+
         get().updateMaintenanceOrder(id, fullUpdates);
       },
 
@@ -368,7 +497,7 @@ export const useAppStore = create<AppState>()(
 
       addMonitorData: (data) => {
         set((state) => ({
-          monitorData: [...state.monitorData.slice(-1000), { ...data, id: generateId() }],
+          monitorData: [...state.monitorData.slice(-2000), { ...data, id: generateId() }],
         }));
       },
 
@@ -388,6 +517,137 @@ export const useAppStore = create<AppState>()(
           .sort(
             (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
           );
+      },
+
+      replenishMonitorData: (furnaceId, hours) => {
+        const state = get();
+        const now = new Date();
+        const targetStart = addMinutes(now, -hours * 60);
+
+        const existing = state.monitorData.filter(m => m.furnaceId === furnaceId);
+        const existingStart = existing.length > 0
+          ? new Date(Math.min(...existing.map(m => new Date(m.timestamp).getTime())))
+          : now;
+
+        const furnace = state.furnaces.find(f => f.id === furnaceId);
+        if (!furnace || furnace.status !== 'running') return;
+
+        const baseTemp = furnaceId === 'f1' ? 850 : furnaceId === 'f2' ? 920 : 880;
+
+        if (existingStart > targetStart) {
+          const gapMs = existingStart.getTime() - targetStart.getTime();
+          const gapMinutes = Math.floor(gapMs / 60000);
+          const count = Math.floor(gapMinutes / 5);
+
+          const newPoints: FurnaceMonitor[] = [];
+          for (let i = 0; i < count; i++) {
+            const timestamp = addMinutes(targetStart, i * 5);
+            if (timestamp >= existingStart) break;
+            const tempVariation = Math.sin(i / 12) * 40 + (Math.random() - 0.5) * 25;
+            newPoints.push({
+              id: generateId(),
+              furnaceId,
+              timestamp: timestamp.toISOString(),
+              temperature: Math.max(200, Math.min(1200, baseTemp + tempVariation)),
+              pressure: 101.3 + Math.sin(i / 20) * 2 + (Math.random() - 0.5),
+              oxygenLevel: 8 + Math.sin(i / 25) * 1.5 + (Math.random() - 0.5) * 0.5,
+              status: 'running',
+            });
+          }
+
+          if (newPoints.length > 0) {
+            set((s) => ({
+              monitorData: [...s.monitorData, ...newPoints].slice(-5000),
+            }));
+          }
+        }
+      },
+
+      resetMonitorData: () => {
+        set({ monitorData: mockMonitorData });
+      },
+
+      getMonitorDataByTimeRange: (furnaceId, startTime, endTime) => {
+        const start = new Date(startTime).getTime();
+        const end = new Date(endTime).getTime();
+        return get()
+          .monitorData.filter(m =>
+            m.furnaceId === furnaceId &&
+            new Date(m.timestamp).getTime() >= start &&
+            new Date(m.timestamp).getTime() <= end
+          )
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      },
+
+      updateFurnaceStatus: (furnaceId, status) => {
+        set((state) => {
+          const newFurnaces = state.furnaces.map(f =>
+            f.id === furnaceId ? { ...f, status } : f
+          );
+          return {
+            furnaces: newFurnaces,
+            dashboardStats: calculateDashboardStats(
+              state.schedules,
+              state.energyRecords,
+              newFurnaces,
+              state.environmentData,
+              state.maintenanceOrders,
+              state.ashHandovers
+            ),
+          };
+        });
+      },
+
+      addEnergyRecord: (record) => {
+        set((state) => ({
+          energyRecords: [...state.energyRecords, { ...record, id: generateId() }],
+        }));
+      },
+
+      updateEnergyRecord: (id, updates) => {
+        set((state) => ({
+          energyRecords: state.energyRecords.map(e =>
+            e.id === id ? { ...e, ...updates } : e
+          ),
+        }));
+      },
+
+      getEnergyBySchedule: (scheduleId) => {
+        return get().energyRecords.filter(e => e.scheduleId === scheduleId);
+      },
+
+      getEnergyByFurnaceAndDate: (furnaceId, date) => {
+        return get().energyRecords.filter(e =>
+          e.furnaceId === furnaceId && e.recordDate === date
+        );
+      },
+
+      getFullTraceBySchedule: (scheduleId) => {
+        const state = get();
+        const schedule = state.schedules.find(s => s.id === scheduleId);
+        const ashHandover = state.ashHandovers.find(h => h.scheduleId === scheduleId);
+        const energyRecords = state.energyRecords.filter(e => e.scheduleId === scheduleId);
+
+        let monitorData: FurnaceMonitor[] = [];
+        let environmentData: EnvironmentMonitor[] = [];
+
+        if (schedule) {
+          const start = schedule.startTime || schedule.scheduledTime;
+          const end = schedule.endTime || (schedule.startTime ? new Date().toISOString() : schedule.scheduledTime);
+          monitorData = state.monitorData.filter(m =>
+            m.furnaceId === schedule.furnaceId &&
+            new Date(m.timestamp) >= new Date(start) &&
+            new Date(m.timestamp) <= new Date(end)
+          ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+          environmentData = state.environmentData.filter(e =>
+            e.furnaceId === schedule.furnaceId &&
+            new Date(e.timestamp) >= new Date(start) &&
+            new Date(e.timestamp) <= new Date(end)
+          ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        }
+
+        return { schedule, monitorData, energyRecords, ashHandover, environmentData };
       },
 
       getFurnaceById: (id) => get().furnaces.find((f) => f.id === id),
@@ -412,6 +672,8 @@ export const useAppStore = create<AppState>()(
         sparePartUsages: state.sparePartUsages,
         ashHandovers: state.ashHandovers,
         monitorData: state.monitorData,
+        energyRecords: state.energyRecords,
+        furnaces: state.furnaces,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {

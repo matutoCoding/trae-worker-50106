@@ -16,6 +16,15 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  Eye,
+  Thermometer,
+  Droplets,
+  Wind,
+  Fuel,
+  Zap,
+  CheckCircle,
+  Clock,
+  Package,
 } from 'lucide-react';
 import {
   LineChart,
@@ -41,7 +50,7 @@ import type { CremationSchedule, EnergyRecord, MaintenanceOrder, AshHandover, En
 type LedgerTab = 'schedule' | 'energy' | 'maintenance' | 'handover' | 'environment';
 
 export default function Ledger() {
-  const { schedules, energyRecords, maintenanceOrders, sparePartUsages, ashHandovers, environmentData } = useAppStore();
+  const { schedules, energyRecords, maintenanceOrders, sparePartUsages, ashHandovers, environmentData, getFullTraceBySchedule, getEnergyBySchedule } = useAppStore();
   const [activeTab, setActiveTab] = useState<LedgerTab>('schedule');
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -49,6 +58,12 @@ export default function Ledger() {
   const [selectedFurnace, setSelectedFurnace] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showStats, setShowStats] = useState(true);
+  const [traceScheduleId, setTraceScheduleId] = useState<string | null>(null);
+
+  const traceData = useMemo(() => {
+    if (!traceScheduleId) return null;
+    return getFullTraceBySchedule(traceScheduleId);
+  }, [traceScheduleId, getFullTraceBySchedule]);
 
   const getDateRange = () => {
     const now = new Date();
@@ -658,6 +673,7 @@ export default function Ledger() {
                   <th className="table-header">预计时长</th>
                   <th className="table-header">实际时长</th>
                   <th className="table-header">备注</th>
+                  <th className="table-header">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -681,6 +697,11 @@ export default function Ledger() {
                     <td className="table-cell text-sm">{formatDuration(s.estimatedDuration)}</td>
                     <td className="table-cell text-sm">{s.actualDuration ? formatDuration(s.actualDuration) : '-'}</td>
                     <td className="table-cell text-sm text-industrial-500">{s.remarks || '-'}</td>
+                    <td className="table-cell">
+                      <button onClick={() => setTraceScheduleId(s.id)} className="p-1 hover:bg-primary-100 text-primary-600 rounded" title="查看完整链路">
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -707,6 +728,11 @@ export default function Ledger() {
                       <div className="flex items-center gap-2">
                         <Flame className="w-4 h-4 text-orange-500" />
                         {furnaces.find(f => f.id === e.furnaceId)?.name}
+                        {e.scheduleId && (
+                          <span className="text-xs text-primary-600 bg-primary-50 px-1.5 py-0.5 rounded">
+                            {schedules.find(s => s.id === e.scheduleId)?.deceasedName}
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="table-cell font-mono">{e.fuelConsumption.toFixed(1)}</td>
@@ -870,6 +896,258 @@ export default function Ledger() {
           </div>
         )}
       </div>
+
+      {traceScheduleId && traceData && traceData.schedule && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setTraceScheduleId(null)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b border-industrial-200 px-6 py-4 flex items-center justify-between rounded-t-xl z-10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center">
+                  <Eye className="w-5 h-5 text-primary-600" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-industrial-900">完整链路追踪</h2>
+                  <p className="text-sm text-industrial-500">{traceData.schedule.deceasedName} - {furnaces.find(f => f.id === traceData.schedule.furnaceId)?.name}</p>
+                </div>
+              </div>
+              <button onClick={() => setTraceScheduleId(null)} className="p-2 hover:bg-industrial-100 rounded-lg transition-colors">
+                <X className="w-5 h-5 text-industrial-500" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div className="bg-industrial-50 rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Calendar className="w-5 h-5 text-primary-600" />
+                  <h3 className="text-base font-semibold text-industrial-900">排程信息</h3>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-xs text-industrial-500 mb-1">逝者姓名</p>
+                    <p className="text-sm font-medium text-industrial-900">{traceData.schedule.deceasedName}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-industrial-500 mb-1">预约时间</p>
+                    <p className="text-sm font-medium text-industrial-900">{formatDateTime(traceData.schedule.scheduledTime)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-industrial-500 mb-1">火化炉</p>
+                    <p className="text-sm font-medium text-industrial-900">{furnaces.find(f => f.id === traceData.schedule.furnaceId)?.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-industrial-500 mb-1">操作工</p>
+                    <p className="text-sm font-medium text-industrial-900">{employees.find(e => e.id === traceData.schedule.operatorId)?.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-industrial-500 mb-1">状态</p>
+                    <span className={`badge ${statusLabels[traceData.schedule.status].className}`}>
+                      {statusLabels[traceData.schedule.status].label}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-xs text-industrial-500 mb-1">预计时长</p>
+                    <p className="text-sm font-medium text-industrial-900">{formatDuration(traceData.schedule.estimatedDuration)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-industrial-500 mb-1">实际时长</p>
+                    <p className="text-sm font-medium text-industrial-900">{traceData.schedule.actualDuration ? formatDuration(traceData.schedule.actualDuration) : '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-industrial-500 mb-1">开始时间</p>
+                    <p className="text-sm font-medium text-industrial-900">{traceData.schedule.startTime ? formatDateTime(traceData.schedule.startTime) : '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-industrial-500 mb-1">结束时间</p>
+                    <p className="text-sm font-medium text-industrial-900">{traceData.schedule.endTime ? formatDateTime(traceData.schedule.endTime) : '-'}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-industrial-50 rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Thermometer className="w-5 h-5 text-orange-500" />
+                  <h3 className="text-base font-semibold text-industrial-900">炉况数据</h3>
+                </div>
+                {traceData.monitorData.length > 0 ? (
+                  <div>
+                    <div className="h-52">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={traceData.monitorData.map((m, i) => ({
+                          time: format(new Date(m.timestamp), 'HH:mm'),
+                          温度: m.temperature,
+                          压力: m.pressure,
+                          含氧量: m.oxygenLevel,
+                        }))}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                          <XAxis dataKey="time" tick={{ fontSize: 10 }} stroke="#9CA3AF" />
+                          <YAxis tick={{ fontSize: 10 }} stroke="#9CA3AF" />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: '#fff',
+                              border: '1px solid #E5E7EB',
+                              borderRadius: '8px',
+                              fontSize: '12px',
+                            }}
+                          />
+                          <Legend />
+                          <Line type="monotone" dataKey="温度" stroke="#EF4444" strokeWidth={2} dot={{ r: 2 }} />
+                          <Line type="monotone" dataKey="压力" stroke="#3B82F6" strokeWidth={2} dot={{ r: 2 }} />
+                          <Line type="monotone" dataKey="含氧量" stroke="#10B981" strokeWidth={2} dot={{ r: 2 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 mt-3">
+                      <div className="bg-white rounded-lg p-3 text-center">
+                        <Thermometer className="w-4 h-4 text-red-500 mx-auto mb-1" />
+                        <p className="text-xs text-industrial-500">平均温度</p>
+                        <p className="text-sm font-bold text-industrial-900">{Math.round(traceData.monitorData.reduce((s, m) => s + m.temperature, 0) / traceData.monitorData.length)}°C</p>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 text-center">
+                        <Droplets className="w-4 h-4 text-blue-500 mx-auto mb-1" />
+                        <p className="text-xs text-industrial-500">平均压力</p>
+                        <p className="text-sm font-bold text-industrial-900">{(traceData.monitorData.reduce((s, m) => s + m.pressure, 0) / traceData.monitorData.length).toFixed(1)} kPa</p>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 text-center">
+                        <Wind className="w-4 h-4 text-green-500 mx-auto mb-1" />
+                        <p className="text-xs text-industrial-500">平均含氧量</p>
+                        <p className="text-sm font-bold text-industrial-900">{(traceData.monitorData.reduce((s, m) => s + m.oxygenLevel, 0) / traceData.monitorData.length).toFixed(1)}%</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center py-8 text-industrial-400">
+                    <Thermometer className="w-5 h-5 mr-2" />
+                    无炉况数据
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-industrial-50 rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Fuel className="w-5 h-5 text-amber-500" />
+                  <h3 className="text-base font-semibold text-industrial-900">能耗记录</h3>
+                </div>
+                {traceData.energyRecords.length > 0 ? (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-white">
+                        <th className="px-3 py-2 text-left text-xs font-medium text-industrial-500 rounded-tl-lg">日期</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-industrial-500">燃料(kg)</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-industrial-500">电力(kWh)</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-industrial-500">时长</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-industrial-500 rounded-tr-lg">费用</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {traceData.energyRecords.map((e) => (
+                        <tr key={e.id} className="border-t border-industrial-100">
+                          <td className="px-3 py-2">{e.recordDate}</td>
+                          <td className="px-3 py-2 font-mono">{e.fuelConsumption.toFixed(1)}</td>
+                          <td className="px-3 py-2 font-mono">{e.electricityConsumption.toFixed(1)}</td>
+                          <td className="px-3 py-2">{formatDuration(e.durationMinutes)}</td>
+                          <td className="px-3 py-2 font-mono text-amber-600">¥{e.cost.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-industrial-200 font-medium">
+                        <td className="px-3 py-2">合计</td>
+                        <td className="px-3 py-2 font-mono">{traceData.energyRecords.reduce((s, e) => s + e.fuelConsumption, 0).toFixed(1)}</td>
+                        <td className="px-3 py-2 font-mono">{traceData.energyRecords.reduce((s, e) => s + e.electricityConsumption, 0).toFixed(1)}</td>
+                        <td className="px-3 py-2">{formatDuration(traceData.energyRecords.reduce((s, e) => s + e.durationMinutes, 0))}</td>
+                        <td className="px-3 py-2 font-mono text-amber-600">¥{traceData.energyRecords.reduce((s, e) => s + e.cost, 0).toFixed(2)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                ) : (
+                  <div className="flex items-center justify-center py-8 text-industrial-400">
+                    <Zap className="w-5 h-5 mr-2" />
+                    无能耗记录
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-industrial-50 rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Package className="w-5 h-5 text-purple-500" />
+                  <h3 className="text-base font-semibold text-industrial-900">骨灰交接</h3>
+                </div>
+                {traceData.ashHandover ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <p className="text-xs text-industrial-500 mb-1">家属</p>
+                      <p className="text-sm font-medium text-industrial-900">{traceData.ashHandover.familyMember}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-industrial-500 mb-1">确认状态</p>
+                      <span className={`badge ${statusLabels[traceData.ashHandover.confirmationStatus].className}`}>
+                        {statusLabels[traceData.ashHandover.confirmationStatus].label}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-xs text-industrial-500 mb-1">收殓时间</p>
+                      <p className="text-sm font-medium text-industrial-900">{traceData.ashHandover.collectTime ? formatDateTime(traceData.ashHandover.collectTime) : '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-industrial-500 mb-1">交接时间</p>
+                      <p className="text-sm font-medium text-industrial-900">{traceData.ashHandover.handoverTime ? formatDateTime(traceData.ashHandover.handoverTime) : '-'}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center py-8 text-industrial-400">
+                    <Package className="w-5 h-5 mr-2" />
+                    无交接记录
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-industrial-50 rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Leaf className="w-5 h-5 text-emerald-500" />
+                  <h3 className="text-base font-semibold text-industrial-900">环保监测</h3>
+                </div>
+                {traceData.environmentData.length > 0 ? (
+                  <div>
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="flex items-center gap-1.5 bg-green-100 text-green-700 px-3 py-1.5 rounded-lg text-sm font-medium">
+                        <CheckCircle className="w-4 h-4" />
+                        达标 {traceData.environmentData.filter(e => e.complianceStatus === 'compliant').length} 条
+                      </div>
+                      <div className="flex items-center gap-1.5 bg-red-100 text-red-700 px-3 py-1.5 rounded-lg text-sm font-medium">
+                        <Clock className="w-4 h-4" />
+                        超标/预警 {traceData.environmentData.filter(e => e.complianceStatus !== 'compliant').length} 条
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="bg-white rounded-lg p-3 text-center">
+                        <p className="text-xs text-industrial-500 mb-1">平均烟气浓度</p>
+                        <p className="text-sm font-bold text-industrial-900">{(traceData.environmentData.reduce((s, e) => s + e.smokeDensity, 0) / traceData.environmentData.length).toFixed(1)} mg/m³</p>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 text-center">
+                        <p className="text-xs text-industrial-500 mb-1">平均SO₂</p>
+                        <p className="text-sm font-bold text-industrial-900">{(traceData.environmentData.reduce((s, e) => s + e.sulfurDioxide, 0) / traceData.environmentData.length).toFixed(1)} mg/m³</p>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 text-center">
+                        <p className="text-xs text-industrial-500 mb-1">平均NOx</p>
+                        <p className="text-sm font-bold text-industrial-900">{(traceData.environmentData.reduce((s, e) => s + e.nitrogenOxide, 0) / traceData.environmentData.length).toFixed(1)} mg/m³</p>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 text-center">
+                        <p className="text-xs text-industrial-500 mb-1">平均PM</p>
+                        <p className="text-sm font-bold text-industrial-900">{(traceData.environmentData.reduce((s, e) => s + e.particulateMatter, 0) / traceData.environmentData.length).toFixed(1)} mg/m³</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center py-8 text-industrial-400">
+                    <Leaf className="w-5 h-5 mr-2" />
+                    无环保数据
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Gauge,
   Thermometer,
@@ -10,6 +10,8 @@ import {
   Maximize2,
   BarChart3,
   AlertCircle,
+  Database,
+  RotateCcw,
 } from 'lucide-react';
 import {
   LineChart,
@@ -24,15 +26,17 @@ import {
 } from 'recharts';
 import { useAppStore } from '@/store';
 import { statusLabels, formatTime, furnaces, formatDateTime } from '@/data/mockData';
-import type { FurnaceMonitor } from '@/types';
 
 export default function Monitor() {
-  const { monitorData, getMonitorDataByFurnaceAndRange } = useAppStore();
+  const { monitorData, getMonitorDataByFurnaceAndRange, replenishMonitorData, resetMonitorData } = useAppStore();
   const [selectedFurnace, setSelectedFurnace] = useState<string>('f1');
   const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h'>('1h');
 
-  const activeFurnaces = furnaces.filter((f) => f.status === 'running' || f.status === 'idle');
   const rangeHours = timeRange === '1h' ? 1 : timeRange === '6h' ? 6 : 24;
+
+  useEffect(() => {
+    replenishMonitorData(selectedFurnace, rangeHours);
+  }, [selectedFurnace, timeRange]);
   const furnaceData = getMonitorDataByFurnaceAndRange(selectedFurnace, rangeHours);
   const hasData = furnaceData.length > 0;
 
@@ -100,9 +104,21 @@ export default function Monitor() {
               </button>
             ))}
           </div>
-          <button className="btn-secondary flex items-center gap-2">
+          <button className="btn-secondary flex items-center gap-2" onClick={() => replenishMonitorData(selectedFurnace, rangeHours)}>
             <RefreshCw className="w-4 h-4" />
             刷新
+          </button>
+          <button className="btn-secondary flex items-center gap-2" onClick={() => replenishMonitorData(selectedFurnace, rangeHours)}>
+            <Database className="w-4 h-4" />
+            补采数据
+          </button>
+          <button className="btn-secondary flex items-center gap-2" onClick={() => {
+            if (confirm('确定要重置所有监控数据吗？此操作不可撤销。')) {
+              resetMonitorData();
+            }
+          }}>
+            <RotateCcw className="w-4 h-4" />
+            重置数据
           </button>
           <button className="btn-secondary flex items-center gap-2">
             <Maximize2 className="w-4 h-4" />

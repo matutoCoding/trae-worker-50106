@@ -20,9 +20,9 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useAppStore } from '@/store';
-import { statusLabels, formatDateTime, employees, furnaces, employeeRoleLabels, formatDate } from '@/data/mockData';
+import { statusLabels, formatDateTime, employees, employeeRoleLabels, formatDate } from '@/data/mockData';
 import type { MaintenanceStatus, MaintenanceType, MaintenanceOrder, SparePartUsage } from '@/types';
-import { format } from 'date-fns';
+import { format, addDays } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 
 interface SparePartFormItem {
@@ -33,6 +33,7 @@ interface SparePartFormItem {
 
 export default function Maintenance() {
   const {
+    furnaces,
     maintenanceOrders,
     sparePartUsages,
     addMaintenanceOrder,
@@ -516,46 +517,92 @@ export default function Maintenance() {
         <div className="card p-5">
           <h2 className="text-lg font-semibold text-industrial-900 mb-4">设备档案</h2>
           <div className="space-y-4">
-            {furnaces.map((furnace) => (
-              <div
-                key={furnace.id}
-                className="p-4 rounded-xl border border-industrial-200 hover:border-primary-300 transition-colors"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-industrial-900 text-lg">{furnace.name}</span>
-                      <span className={`badge ${statusLabels[furnace.status].className}`}>
-                        {statusLabels[furnace.status].label}
-                      </span>
+            {furnaces.map((furnace) => {
+              const lastMaintenance = maintenanceOrders
+                .filter((o) => o.furnaceId === furnace.id && o.status === 'completed' && o.handleTime)
+                .sort((a, b) => new Date(b.handleTime!).getTime() - new Date(a.handleTime!).getTime())[0];
+
+              const lastSpareParts = lastMaintenance
+                ? getSparePartsByMaintenance(lastMaintenance.id)
+                : [];
+
+              const maintenanceInterval = lastMaintenance?.type === 'preventive' ? 90 : 30;
+              const nextMaintenanceDate = furnace.lastMaintenanceDate
+                ? format(addDays(new Date(furnace.lastMaintenanceDate), maintenanceInterval), 'yyyy-MM-dd')
+                : null;
+
+              const isOverdue = nextMaintenanceDate
+                ? new Date(nextMaintenanceDate) < new Date()
+                : false;
+
+              return (
+                <div
+                  key={furnace.id}
+                  className="p-4 rounded-xl border border-industrial-200 hover:border-primary-300 transition-colors"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-industrial-900 text-lg">{furnace.name}</span>
+                        <span className={`badge ${statusLabels[furnace.status].className}`}>
+                          {statusLabels[furnace.status].label}
+                        </span>
+                      </div>
+                      <p className="text-sm text-industrial-500 mt-1">
+                        {furnace.model} · {furnace.manufacturer}
+                      </p>
                     </div>
-                    <p className="text-sm text-industrial-500 mt-1">
-                      {furnace.model} · {furnace.manufacturer}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-bold text-industrial-900">
-                      {furnace.runningHours.toLocaleString()}
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-industrial-900">
+                        {furnace.runningHours.toLocaleString()}
+                      </div>
+                      <div className="text-xs text-industrial-500">累计运行小时</div>
                     </div>
-                    <div className="text-xs text-industrial-500">累计运行小时</div>
                   </div>
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <div className="text-industrial-500">安装日期</div>
+                      <div className="font-medium text-industrial-800">{furnace.installDate}</div>
+                    </div>
+                    <div>
+                      <div className="text-industrial-500">最高温度</div>
+                      <div className="font-medium text-industrial-800">{furnace.maxTemperature}°C</div>
+                    </div>
+                    <div>
+                      <div className="text-industrial-500">上次维保</div>
+                      <div className="font-medium text-industrial-800">{furnace.lastMaintenanceDate || '-'}</div>
+                    </div>
+                  </div>
+
+                  {lastMaintenance && (
+                    <div className="mt-3 pt-3 border-t border-industrial-100 text-sm">
+                      <div className="flex items-center gap-2 mb-1">
+                        <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                        <span className="text-industrial-500">最近维保：</span>
+                        <span className="font-medium text-industrial-800">{lastMaintenance.result}</span>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-industrial-500">
+                        <span>费用: ¥{lastMaintenance.cost?.toLocaleString() ?? 0}</span>
+                        <span>完成时间: {formatDateTime(lastMaintenance.handleTime!)}</span>
+                      </div>
+                      {lastSpareParts.length > 0 && (
+                        <div className="text-xs text-industrial-500 mt-1">
+                          备件: {lastSpareParts.map((p) => `${p.partName} x${p.quantity}`).join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {nextMaintenanceDate && (
+                    <div className={`mt-2 flex items-center gap-2 text-xs ${isOverdue ? 'text-red-600' : 'text-blue-600'}`}>
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>下次维保提醒: {nextMaintenanceDate}</span>
+                      {isOverdue && <span className="badge bg-red-100 text-red-700">已逾期</span>}
+                    </div>
+                  )}
                 </div>
-                <div className="grid grid-cols-3 gap-4 text-sm">
-                  <div>
-                    <div className="text-industrial-500">安装日期</div>
-                    <div className="font-medium text-industrial-800">{furnace.installDate}</div>
-                  </div>
-                  <div>
-                    <div className="text-industrial-500">最高温度</div>
-                    <div className="font-medium text-industrial-800">{furnace.maxTemperature}°C</div>
-                  </div>
-                  <div>
-                    <div className="text-industrial-500">上次维保</div>
-                    <div className="font-medium text-industrial-800">{furnace.lastMaintenanceDate || '-'}</div>
-                  </div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
